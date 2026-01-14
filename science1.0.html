@@ -77,11 +77,22 @@
             padding: 0.75rem; 
             margin-top: 1rem; 
             box-shadow: none !important;
-            overflow-x: auto; /* スマホで横スクロールを許可 */
-            scrollbar-width: thin; /* スクロールバーを控えめに */
+            overflow-x: auto;
+            overflow-y: auto;
+            max-height: 400px;
+            scrollbar-width: thin;
         }
-        .ranking-card::-webkit-scrollbar { height: 4px; }
-        .ranking-card::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+        .ranking-card::-webkit-scrollbar {
+            height: 4px;
+            width: 4px;
+        }
+        .ranking-card::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+        }
+        .ranking-card::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.02);
+        }
         
         /* 中のグリッドが適切な幅になるように固定（status列まで含めて広めに設定） */
         .ranking-card .grid { 
@@ -1972,7 +1983,17 @@
                 btn.onclick = () => handleAnswer(opt, btn); 
                 oc.appendChild(btn); 
             }); 
-            getEl('feedback-area').classList.add('hidden'); window.scrollTo({ top: 0, behavior: 'smooth' }); 
+            getEl('feedback-area').classList.add('hidden');
+
+            // 確実に画面上部へスクロール（複数手段を併用）
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            document.body.scrollTop = 0;          // Safari 対応
+            document.documentElement.scrollTop = 0; // その他ブラウザ対応
+
+            // 念のため遅延して再スクロール
+            setTimeout(() => {
+                window.scrollTo({ top: 0, behavior: 'auto' });
+            }, 50);
         }
         
         async function handleAnswer(selected, btn) { 
@@ -2403,7 +2424,20 @@
             const savedTheme = localStorage.getItem('ethics_theme_mode') || 'modeA';
             applyTheme(savedTheme);
             window.syncAllFromSpreadsheet(true); 
-            setOnClick('next-btn-action', () => { currentIdx++; if (currentIdx < quizData.length) showQuestion(); else finishSession(); }); 
+            setOnClick('next-btn-action', () => {
+                currentIdx++;
+
+                if (currentIdx < quizData.length) {
+                    // 問題表示前に必ずスクロール
+                    window.scrollTo({ top: 0, behavior: 'auto' });
+                    document.body.scrollTop = 0;
+                    document.documentElement.scrollTop = 0;
+
+                    showQuestion();
+                } else {
+                    finishSession();
+                }
+            }); 
             setOnClick('sync-all-btn-action', () => window.syncAllFromSpreadsheet(false)); 
             setOnClick('cloud-sync-toggle-btn', () => { const area = getEl('sync-area'); if (area) area.classList.toggle('hidden'); }); 
         };
