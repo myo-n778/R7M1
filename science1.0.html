@@ -231,6 +231,7 @@
                 <div class="flex flex-wrap justify-center md:justify-start items-center gap-2">
                     <button id="active-user-display" class="bg-white/10 text-white text-[10px] px-4 py-1 rounded-full border border-white/20 font-black italic cursor-pointer transition-all hover:opacity-80">LOADING...</button>
                     <button id="question-shuffle-display" class="bg-white/10 text-white text-[10px] px-4 py-1 rounded-full border border-white/20 font-black italic cursor-pointer transition-all hover:opacity-80">SHUFFLE OFF</button>
+                    <button id="logout-btn" class="bg-rose-500/20 text-rose-200 text-[10px] px-3 py-1 rounded-full border border-rose-400/40 font-black uppercase transition-all hover:opacity-80">LOGOUT</button>
                     <span id="neural-level-display" class="neural-level-badge">LV. 00</span>
                     <span id="current-rank-display" class="bg-white/10 text-white text-[10px] px-4 py-1 rounded-full border border-white/20 font-black italic">RANK --</span>
                     <div class="flex items-center gap-1.5 ml-0 md:ml-2 pl-2 border-l border-white/10 flex-shrink-0">
@@ -491,6 +492,41 @@
 
         const getEl = (id) => document.getElementById(id);
         const setOnClick = (id, fn) => { const el = getEl(id); if (el) el.onclick = fn; };
+        const normalizeText = (value) => (value === null || value === undefined) ? '' : String(value).trim();
+        const getRecordValue = (record, keys) => {
+            if (!record) return '';
+            for (const key of keys) {
+                const val = record[key];
+                const normalized = normalizeText(val);
+                if (normalized) return normalized;
+            }
+            return '';
+        };
+        const getCurrentUserId = () => {
+            const cls = normalizeText(USER_CLASS);
+            const num = normalizeText(USER_NUMBER);
+            const name = normalizeText(USER_NAME);
+            if (!cls || !num || !name) return '';
+            return `${cls}-${num}-${name}`;
+        };
+        const getRankingName = (record = {}) => {
+            const name = getRecordValue(record, ['name', 'dbName', 'userName', 'user_name', 'username']);
+            if (name) return name;
+            const userId = getRecordValue(record, ['userId', 'user_id', 'userid', 'id']);
+            if (userId) {
+                const parts = userId.split('-');
+                if (parts.length >= 3) return parts.slice(2).join('-');
+                return userId;
+            }
+            return '--';
+        };
+        const isCurrentUserRecord = (record = {}) => {
+            const currentUserId = getCurrentUserId();
+            const recordUserId = getRecordValue(record, ['userId', 'user_id', 'userid', 'id']);
+            if (currentUserId && recordUserId && currentUserId === recordUserId) return true;
+            const recordName = normalizeText(getRankingName(record));
+            return recordName && recordName === normalizeText(USER_NAME);
+        };
 
         // KaTeX数式レンダリング関数（より確実な方法）
         function renderMath(element, maxAttempts = 30) {
@@ -730,9 +766,9 @@
         }
 
         function initUserInfo() { 
-            USER_NAME = localStorage.getItem('ethics_user_name') || '';
-            USER_CLASS = localStorage.getItem('ethics_user_class') || '';
-            USER_NUMBER = localStorage.getItem('ethics_user_number') || '';
+            USER_NAME = normalizeText(localStorage.getItem('ethics_user_name') || '');
+            USER_CLASS = normalizeText(localStorage.getItem('ethics_user_class') || '');
+            USER_NUMBER = normalizeText(localStorage.getItem('ethics_user_number') || '');
             // ローカルストレージからstatusメッセージを読み込む
             USER_STATUS = localStorage.getItem('ethics_user_status') || '';
             // ローカルストレージに値がない場合はデフォルトで公開（true）
@@ -744,7 +780,14 @@
             // ローカルストレージからWeak Pointsモード設定を読み込む（デフォルトはOFF）
             const storedWeakPoints = localStorage.getItem('ethics_weak_points_mode');
             isWeakPointsMode = storedWeakPoints === 'true';
-            if (!USER_NAME) { 
+            const nameInput = getEl('user-name-input');
+            if (nameInput) nameInput.value = USER_NAME;
+            const classSelect = getEl('user-class-select');
+            if (classSelect) classSelect.value = USER_CLASS;
+            const numberInput = getEl('user-number-input');
+            if (numberInput) numberInput.value = USER_NUMBER;
+
+            if (!normalizeText(USER_NAME)) { 
                 getEl('registration-modal').classList.add('active'); 
             } else { 
                 updateUserDisplay(); 
@@ -755,6 +798,12 @@
         function updateUserDisplay() { 
             const displayEl = getEl('active-user-display');
             if (displayEl) {
+                if (!normalizeText(USER_NAME)) {
+                    displayEl.innerText = '未登録';
+                    displayEl.classList.add('bg-white/10', 'border-white/20', 'text-white');
+                    displayEl.classList.remove('bg-amber-500/30', 'border-amber-400/50', 'text-amber-200', 'shadow-lg', 'shadow-amber-500/50');
+                    return;
+                }
                 // 名前の横に公開/非公開を小さく英語で表示
                 const publicLabel = isRankingPublic ? '<span class="text-[7px] text-amber-400/70 font-normal ml-1">PUBLIC</span>' : '<span class="text-[7px] text-slate-300/80 font-normal ml-1">PRIVATE</span>';
                 displayEl.innerHTML = USER_NAME + publicLabel;
@@ -882,6 +931,35 @@
             localStorage.setItem('ethics_question_shuffle', isQuestionShuffleEnabled.toString());
             updateShuffleDisplay();
         }
+
+        window.logoutUser = () => {
+            if (!confirm('ログアウトしますか？\n現在のユーザー情報は端末から削除されます。')) return;
+            USER_NAME = '';
+            USER_CLASS = '';
+            USER_NUMBER = '';
+            USER_STATUS = '';
+            isRankingPublic = true;
+            localStorage.removeItem('ethics_user_name');
+            localStorage.removeItem('ethics_user_class');
+            localStorage.removeItem('ethics_user_number');
+            localStorage.removeItem('ethics_user_status');
+            localStorage.removeItem('ethics_ranking_public');
+            localStorage.removeItem('ethics_question_stats');
+            userHistory = [];
+            questionStats = {};
+            updateUserDisplay();
+            updateStatusDisplay();
+            updateShuffleDisplay();
+            updateStatsUI();
+            const nameInput = getEl('user-name-input');
+            if (nameInput) nameInput.value = '';
+            const classSelect = getEl('user-class-select');
+            if (classSelect) classSelect.value = '';
+            const numberInput = getEl('user-number-input');
+            if (numberInput) numberInput.value = '';
+            const modal = getEl('registration-modal');
+            if (modal) modal.classList.add('active');
+        };
         
         window.toggleWeakList = () => {
             isWeakPointsMode = !isWeakPointsMode;
@@ -946,6 +1024,7 @@
             window.syncAllFromSpreadsheet(true);
         });
         setOnClick('active-user-display', toggleRankingPublic);
+        setOnClick('logout-btn', window.logoutUser);
         setOnClick('user-status-display', window.openStatusModal);
         setOnClick('question-shuffle-display', toggleQuestionShuffle);
         setOnClick('status-custom-save-btn', window.saveCustomStatus);
@@ -995,6 +1074,7 @@
 
         function updateStatsUI() {
             try {
+                const hasUserInfo = normalizeText(USER_NAME) && normalizeText(USER_CLASS) && normalizeText(USER_NUMBER);
                 const sorted = [...userHistory].sort((a,b) => b.timestamp - a.timestamp);
                 const latest = sorted[0];
                 if (latest) {
@@ -1042,10 +1122,10 @@
                 if (getEl('max-streak-display')) getEl('max-streak-display').innerText = maxStreak;
                 
                 // ランキングデータがある場合のみランクを表示（分母も含める）
-                if (rankingData && rankingData.length > 0) {
-                    const myRank = rankingData.findIndex(r => (r.name || r.dbName) === USER_NAME) + 1;
+                if (rankingData && rankingData.length > 0 && hasUserInfo) {
+                    const myRank = rankingData.findIndex(r => isCurrentUserRecord(r)) + 1;
                     const totalRanking = rankingData.length;
-                    const myData = rankingData.find(r => (r.name || r.dbName) === USER_NAME);
+                    const myData = rankingData.find(r => isCurrentUserRecord(r));
                     
                     if (getEl('current-rank-display')) {
                         const rankEl = getEl('current-rank-display');
@@ -1175,8 +1255,9 @@
                     }
                     
                 } else {
+                    const totalRanking = rankingData ? rankingData.length : 0;
                     if (getEl('current-rank-display')) {
-                        getEl('current-rank-display').innerText = 'RANK --';
+                        getEl('current-rank-display').innerText = totalRanking ? `RANK -- / ${totalRanking}` : 'RANK --';
                         getEl('current-rank-display').className = 'bg-white/10 text-white text-[10px] px-4 py-1 rounded-full border border-white/20 font-black italic';
                     }
                     if (getEl('last-attempt-display')) {
@@ -1206,7 +1287,7 @@
                         
                         let maxNameWidth = 0;
                         rankingData.forEach((r) => {
-                            const userNameDisplay = r.name || r.dbName || r.userName || r.user_name || '--';
+                            const userNameDisplay = getRankingName(r);
                             tempSpan.textContent = String(userNameDisplay);
                             const width = tempSpan.offsetWidth;
                             if (width > maxNameWidth) {
@@ -1231,7 +1312,7 @@
                         tempSpan.style.width = 'auto';
                         
                         rankingData.forEach((r) => {
-                            const statusDisplay = (r.status || (r.name === USER_NAME ? USER_STATUS : '')) || '--';
+                            const statusDisplay = (r.status || (isCurrentUserRecord(r) ? USER_STATUS : '')) || '--';
                             tempSpan.textContent = String(statusDisplay);
                             const width = tempSpan.offsetWidth;
                             if (width > maxStatusWidth) {
@@ -1266,9 +1347,9 @@
                             console.log(`ランキングエントリ ${i}:`, r);
                             const rLv = Math.floor((r.exp || 0) / 10);
                             // 名前の取得を複数のプロパティから試行
-                            const userNameDisplay = r.name || r.dbName || r.userName || r.user_name || '--';
-                            console.log(`エントリ ${i} の名前:`, userNameDisplay, '元データ:', {name: r.name, dbName: r.dbName, userName: r.userName, user_name: r.user_name});
-                            const isMe = userNameDisplay === USER_NAME;
+                            const userNameDisplay = getRankingName(r);
+                            console.log(`エントリ ${i} の名前:`, userNameDisplay, '元データ:', {name: r.name, dbName: r.dbName, userName: r.userName, user_name: r.user_name, userId: r.userId, user_id: r.user_id});
+                            const isMe = isCurrentUserRecord(r);
                             // 最終取り組み日（userHistoryから取得、年月日のみ、時刻はカット）
                             let lastDateDisplay = '--';
                             // 自分の場合はuserHistoryから取得（フロントページと同じロジック）
@@ -1293,7 +1374,7 @@
                             }
                             const statusDisplay = (r.status || (isMe ? USER_STATUS : '')) || '--';
                             // 名前を直接取得（確実に表示されるように）
-                            const finalUserName = r.name || r.dbName || userNameDisplay || 'Unknown';
+                            const finalUserName = normalizeText(userNameDisplay) || 'Unknown';
                             console.log(`最終的な名前表示: "${finalUserName}"`);
                             
                             const rowHtml = `<div class="grid gap-3 items-center text-[10px] py-1.5 border-b border-white/5 last:border-0 ${isMe ? 'text-amber-300 bg-white/5 font-bold' : 'text-slate-200'}" style="grid-template-columns: 30px ${maxNameWidth}px 50px 35px 70px 70px 40px 50px 50px 140px ${maxStatusWidth}px;">
