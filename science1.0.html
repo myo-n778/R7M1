@@ -510,6 +510,9 @@
         const getEl = (id) => document.getElementById(id);
         const setOnClick = (id, fn) => { const el = getEl(id); if (el) el.onclick = fn; };
         const normalizeText = (value) => (value === null || value === undefined) ? '' : String(value).trim();
+        const EXCLUDED_PROBLEM_SHEET_NAMES = new Set(['設定']);
+        const normalizeSheetName = (value) => (value === null || value === undefined) ? '' : String(value).normalize('NFKC').trim();
+        const isExcludedProblemSheetName = (sheetName) => EXCLUDED_PROBLEM_SHEET_NAMES.has(normalizeSheetName(sheetName));
         const getRecordValue = (record, keys) => {
             if (!record) return '';
             for (const key of keys) {
@@ -1670,6 +1673,11 @@
                 container.innerHTML = '<div class="text-[9px] text-red-400 text-center py-4 italic">データの形式が正しくありません</div>';
                 return;
             }
+            const excludedLocalSheetNames = Object.keys(storedTSV).filter(isExcludedProblemSheetName);
+            if (excludedLocalSheetNames.length > 0) {
+                excludedLocalSheetNames.forEach((name) => delete storedTSV[name]);
+                console.warn('クライアント側で除外したシート（localStorage）:', excludedLocalSheetNames);
+            }
             
             // デバッグ用（コンソールに表示）
             console.log('ローカルストレージの生データ:', rawData?.substring(0, 200));
@@ -2273,14 +2281,20 @@
                 }
                 
                 if (result.problems) {
+                    const excludedProblemKeys = Object.keys(result.problems).filter(isExcludedProblemSheetName);
+                    if (excludedProblemKeys.length > 0) {
+                        excludedProblemKeys.forEach((key) => delete result.problems[key]);
+                        console.warn('クライアント側で除外したシート（GAS応答）:', excludedProblemKeys);
+                    }
                     // データ構造を確認
                     localStorage.setItem('ethics_data_main', JSON.stringify(result.problems));
                     console.log('保存後のローカルストレージ:', localStorage.getItem('ethics_data_main')?.substring(0, 200));
                 }
                 // シートの順序を保存（スプレッドシートの左から右の順序）
                 if(result.sheetOrder && result.sheetOrder.length > 0) {
-                    localStorage.setItem('ethics_sheet_order', JSON.stringify(result.sheetOrder));
-                    console.log('シートの順序:', result.sheetOrder);
+                    const safeSheetOrder = result.sheetOrder.filter(name => !isExcludedProblemSheetName(name));
+                    localStorage.setItem('ethics_sheet_order', JSON.stringify(safeSheetOrder));
+                    console.log('シートの順序:', safeSheetOrder);
                 }
                 if(result.userStats) { 
                     Object.entries(result.userStats).forEach(([key, s]) => { 
